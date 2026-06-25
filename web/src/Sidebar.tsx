@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { SearchMatch } from "./api";
 import type { TreeNode } from "./tree";
 
 interface Props {
@@ -11,32 +10,10 @@ interface Props {
   onDeleteDir: (path: string) => void;
   onRenameFile: (path: string) => void;
   onDeleteFile: (path: string) => void;
-  onSearch: (q: string) => void;
-  searchResults: SearchMatch[] | null;
-  searching: boolean;
-  onClearSearch: () => void;
 }
 
 export default function Sidebar(props: Props) {
-  const {
-    tree,
-    activePath,
-    onOpen,
-    onNewNote,
-    onNewFolder,
-    onSearch,
-    searchResults,
-    searching,
-    onClearSearch,
-  } = props;
-  const [query, setQuery] = useState("");
-
-  const submitSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const q = query.trim();
-    if (q) onSearch(q);
-    else onClearSearch();
-  };
+  const { tree, activePath, onNewNote, onNewFolder } = props;
 
   return (
     <aside className="sidebar">
@@ -54,86 +31,25 @@ export default function Sidebar(props: Props) {
         </div>
       </div>
 
-      <form className="search" onSubmit={submitSearch}>
-        <div className="search-field">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="7" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="search"
-            placeholder="Search notes…"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              if (e.target.value === "") onClearSearch();
-            }}
-          />
-        </div>
-      </form>
-
       <div className="tree-scroll">
-        {searchResults !== null ? (
-          <SearchResults
-            results={searchResults}
-            searching={searching}
-            onOpen={onOpen}
-            onClear={() => {
-              setQuery("");
-              onClearSearch();
-            }}
-          />
-        ) : (
-          <ul className="tree">
-            {tree.children.map((child) => (
-              <TreeItem
-                key={child.path}
-                node={child}
-                depth={0}
-                activePath={activePath}
-                onOpen={props.onOpen}
-                onNewNote={props.onNewNote}
-                onNewFolder={props.onNewFolder}
-                onDeleteDir={props.onDeleteDir}
-                onRenameFile={props.onRenameFile}
-                onDeleteFile={props.onDeleteFile}
-              />
-            ))}
-          </ul>
-        )}
+        <ul className="tree">
+          {tree.children.map((child) => (
+            <TreeItem
+              key={child.path}
+              node={child}
+              depth={0}
+              activePath={activePath}
+              onOpen={props.onOpen}
+              onNewNote={props.onNewNote}
+              onNewFolder={props.onNewFolder}
+              onDeleteDir={props.onDeleteDir}
+              onRenameFile={props.onRenameFile}
+              onDeleteFile={props.onDeleteFile}
+            />
+          ))}
+        </ul>
       </div>
     </aside>
-  );
-}
-
-function SearchResults({
-  results,
-  searching,
-  onOpen,
-  onClear,
-}: {
-  results: SearchMatch[];
-  searching: boolean;
-  onOpen: (path: string) => void;
-  onClear: () => void;
-}) {
-  return (
-    <div className="search-results">
-      <div className="search-head">
-        <span>
-          {searching ? "Searching…" : `${results.length} result(s)`}
-        </span>
-        <button onClick={onClear}>clear</button>
-      </div>
-      {results.map((r) => (
-        <button key={r.path} className="result" onClick={() => onOpen(r.path)}>
-          <div className="result-path">{r.path}</div>
-          <div className="result-snippet">
-            <span className="lineno">L{r.line}</span> {r.snippet}
-          </div>
-        </button>
-      ))}
-    </div>
   );
 }
 

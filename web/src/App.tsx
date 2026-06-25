@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type SearchMatch } from "./api";
+import { api } from "./api";
 import { buildTree, type TreeNode } from "./tree";
 import Sidebar from "./Sidebar";
 import Editor from "./Editor";
+import Search from "./Search";
 
 type Theme = "light" | "dark";
+
+function readRoute() {
+  return {
+    path: window.location.pathname,
+    query: new URLSearchParams(window.location.search).get("q") ?? "",
+  };
+}
 
 export default function App() {
   const [tree, setTree] = useState<TreeNode>({
@@ -31,10 +39,25 @@ export default function App() {
     history.current = { past: [], future: [], ts: 0 };
   };
 
-  const [searchResults, setSearchResults] = useState<SearchMatch[] | null>(
-    null,
-  );
-  const [searching, setSearching] = useState(false);
+  // Minimal client-side routing: "/" (home) and "/search?q=…".
+  const [route, setRoute] = useState(readRoute);
+  const [searchInput, setSearchInput] = useState(route.query);
+
+  useEffect(() => {
+    const onPop = () => setRoute(readRoute());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  const navigate = useCallback((to: string) => {
+    window.history.pushState(null, "", to);
+    setRoute(readRoute());
+  }, []);
+
+  // Keep the search box in sync when the URL query changes (e.g. back button).
+  useEffect(() => {
+    setSearchInput(route.query);
+  }, [route.query]);
 
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem("theme") as Theme) || "dark",
@@ -253,25 +276,22 @@ export default function App() {
     [activePath, refreshTree],
   );
 
-  const runSearch = useCallback(async (q: string) => {
-    setSearching(true);
-    setSearchResults([]);
-    try {
-      const res = await api.search(q);
-      setSearchResults(res);
-    } catch (e) {
-      setError((e as Error).message);
-      setSearchResults([]);
-    } finally {
-      setSearching(false);
-    }
-  }, []);
+  const submitSearch = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      const q = searchInput.trim();
+      if (q) navigate(`/search?q=${encodeURIComponent(q)}`);
+      else navigate("/");
+    },
+    [searchInput, navigate],
+  );
 
   const openFromSearch = useCallback(
     (path: string) => {
+      navigate("/");
       void openNote(path);
     },
-    [openNote],
+    [navigate, openNote],
   );
 
   return (
@@ -285,14 +305,24 @@ export default function App() {
         onDeleteDir={deleteDir}
         onRenameFile={renameNote}
         onDeleteFile={deleteFile}
-        onSearch={runSearch}
-        searchResults={searchResults}
-        searching={searching}
-        onClearSearch={() => setSearchResults(null)}
       />
 
       <main className="main">
         <div className="topbar">
+          <form className="topsearch" onSubmit={submitSearch}>
+            <div className="search-field">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                placeholder="Search notes…  (Enter)"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+              />
+            </div>
+          </form>
           <div className="grow">
             {error && <span className="error">{error}</span>}
           </div>
@@ -305,7 +335,9 @@ export default function App() {
           </button>
         </div>
 
-        {activePath ? (
+        {route.path === "/search" ? (
+          <Search query={route.query} onOpen={openFromSearch} />
+        ) : activePath ? (
           loadingNote ? (
             <div className="empty">Loading…</div>
           ) : (
