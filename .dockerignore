@@ -1,0 +1,17 @@
+# VCS
+.git
+.gitignore
+
+# Local build artifacts
+67notes
+67notes.exe
+web/node_modules
+web/dist
+
+# Editor / OS
+*.log
+.DS_Store
+
+# CI / agent metadata
+.github
+.claude

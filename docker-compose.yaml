@@ -1,0 +1,76 @@
+# 67notes — Go backend (React UI embedded) + MinIO AIStor object storage.
+#
+# MinIO's AGPLv3 community edition is deprecated (no updates). This stack uses
+# AIStor (quay.io/minio/aistor/minio), the actively maintained successor.
+#
+# PREREQUISITE — license file:
+#   AIStor requires a MinIO Software License to accept writes. Without one it
+#   boots in "offline mode" (all S3 ops return 403), and 67notes will fatal on
+#   startup because it creates buckets at boot.
+#
+#   Get a FREE single-node license:
+#     1. https://min.io/pricing  →  "Get Started" under Free tier
+#     2. Download minio.license
+#     3. Place it next to this file:  ./minio.license
+#   (path overridable via MINIO_LICENSE_FILE env var)
+#
+# Usage:
+#   docker compose up -d --build
+#   open http://localhost:6767           # the app
+#   open http://localhost:9001            # MinIO console (minioadmin / minioadmin)
+#
+# MinIO data persists in the named volume `minio-data`.
+# Buckets (`notes`, `notes-images`) are created automatically by the app on startup.
+
+services:
+  minio:
+    image: quay.io/minio/aistor/minio:latest
+    # /mnt/data is AIStor's standard data path; --license mounts the license file.
+    command: server /mnt/data --console-address ":9001" --license /minio.license
+    ports:
+      - "9000:9000"   # S3 API (used by the app)
+      - "9001:9001"   # web console
+    environment:
+      # Kept in sync with the app's documented defaults (see README config table).
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/mnt/data
+      # License file (read-only). Override path via MINIO_LICENSE_FILE.
+    healthcheck:
+      # /minio/health/ready returns 200 only when MinIO can serve. In offline
+      # mode (no/invalid license) it returns 503, so this healthcheck is strict:
+      # without a valid license, MinIO stays unhealthy and `app` won't start.
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  app:
+    build: .
+    # Rebuild when Go/web sources change; `docker compose up` alone won't pick that up.
+    image: 67notes:latest
+    ports:
+      - "6767:6767"
+    environment:
+      ADDR: ":6767"
+      MINIO_ENDPOINT: "minio:9000"     # service name + S3 API port
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      NOTES_BUCKET: "notes"
+      IMAGES_BUCKET: "notes-images"
+      MINIO_SSL: "false"               # plaintext within the compose network
+    depends_on:
+      minio:
+        condition: service_healthy     # app fatals if MinIO is unreachable on boot
+    healthcheck:
+      # Hits the embedded SPA index — no MinIO dependency, just confirms serving.
+      test: ["CMD", "wget", "-qO-", "http://localhost:6767/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  minio-data:

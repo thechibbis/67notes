@@ -8,3 +8,6 @@ web/dist/
 # Editor / OS
 *.log
 .DS_Store
+
+# MinIO AIStor license (free tier — keep out of VCS)
+minio.license
