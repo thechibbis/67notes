@@ -58,6 +58,31 @@ Then open http://localhost:6767.
 make dev           # Vite dev server, proxies /api -> :6767
 ```
 
+## Docker Compose
+
+A `docker-compose.yaml` is provided that orchestrates the Go backend, React UI
+(built into the image), and MinIO AIStor.
+
+### Quick start
+
+```sh
+MINIO_LICENSE_TOKEN=<your-jwt> docker compose up -d --build
+```
+
+Then open [http://localhost:6767](http://localhost:6767) for the app and
+[http://localhost:9001](http://localhost:9001) for the MinIO console
+(credentials: `minioadmin` / `minioadmin`).
+
+### Services
+
+| Service      | Port              | Notes                                           |
+| ------------ | ----------------- | ----------------------------------------------- |
+| `app`        | `:6767`           | 67notes — Go + embedded React                   |
+| `minio`      | `:9000`, `:9001`  | AIStor S3 API + console (quay.io/minio/aistor)  |
+
+Data persists in the `minio-data` named volume. Buckets (`notes`,
+`notes-images`) are created automatically by the app on startup.
+
 ## Configuration
 
 Flags (env var in parentheses), with defaults:

@@ -1,92 +1,51 @@
-# 67notes — Go backend (React UI embedded) + MinIO AIStor object storage.
-#
-# MinIO's AGPLv3 community edition is deprecated (no updates). This stack uses
-# AIStor (quay.io/minio/aistor/minio), the actively maintained successor.
-#
-# LICENSE — set via env var (Dokploy-native, no host filesystem access needed):
-#   AIStor requires a MinIO Software License. Without one it boots in "offline
-#   mode" (all S3 ops return 403), and 67notes will fatal on startup because it
-#   creates buckets at boot.
-#
-#   1. Get a FREE single-node license: https://min.io/pricing → Free tier
-#   2. Decode the JWT token from the downloaded license file, or grab it from
-#      the SUBNET License Key screen.
-#   3. Set the env var MINIO_LICENSE_TOKEN=<your-jwt-token>
-#      (in Dokploy: Environment tab → add the variable)
-#
-#   The init container writes the token to a shared volume before MinIO starts.
-#   To update a license later: set the new token, redeploy, then restart MinIO
-#   (it polls the file every 24h or use `mc admin service restart`).
-#
-# Usage:
-#   docker compose up -d --build
-#   open http://localhost:6767           # the app
-#   open http://localhost:9001            # MinIO console (minioadmin / minioadmin)
-#
-# MinIO data persists in the named volume `minio-data`.
-# Buckets (`notes`, `notes-images`) are created automatically by the app on startup.
-
 services:
-  # ---- Init: write the license JWT from an env var to a shared volume ----
   minio-init:
     image: alpine:3
-    volumes:
-      - license:/license
+    volumes: [license:/license]
     environment:
       MINIO_LICENSE_TOKEN: ${MINIO_LICENSE_TOKEN:-}
-    # Write the token to a file on the license volume. If the env var is empty,
-    # the file is empty and MinIO will boot into offline mode (clear signal).
     command: sh -c 'printf "%s" "$$MINIO_LICENSE_TOKEN" > /license/minio.license'
     restart: "no"
 
-  # ---- MinIO AIStor ----
   minio:
     image: quay.io/minio/aistor/minio:latest
-    # /mnt/data is AIStor's standard data path; license read from shared volume.
     command: server /mnt/data --console-address ":9001" --license /license/minio.license
     depends_on:
       minio-init:
         condition: service_completed_successfully
     ports:
-      - "9000:9000"   # S3 API (used by the app)
+      - "9000:9000"   # S3 API
       - "9001:9001"   # web console
     environment:
-      # Kept in sync with the app's documented defaults (see README config table).
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_USER:-minioadmin}
     volumes:
       - minio-data:/mnt/data
-      - license:/license:ro       # license written by minio-init above
+      - license:/license:ro
     healthcheck:
-      # /minio/health/ready returns 200 only when MinIO can serve. In offline
-      # mode (no/invalid license) it returns 503, so this healthcheck is strict:
-      # without a valid license, MinIO stays unhealthy and `app` won't start.
       test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
 
-  # ---- 67notes app ----
   app:
     build: .
-    # Rebuild when Go/web sources change; `docker compose up` alone won't pick that up.
     image: 67notes:latest
     ports:
       - "6767:6767"
     environment:
       ADDR: ":6767"
-      MINIO_ENDPOINT: "minio:9000"     # service name + S3 API port
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       NOTES_BUCKET: "notes"
       IMAGES_BUCKET: "notes-images"
-      MINIO_SSL: "false"               # plaintext within the compose network
+      MINIO_SSL: "false"
     depends_on:
       minio:
-        condition: service_healthy     # app fatals if MinIO is unreachable on boot
+        condition: service_healthy
     healthcheck:
-      # Hits the embedded SPA index — no MinIO dependency, just confirms serving.
       test: ["CMD", "wget", "-qO-", "http://localhost:6767/"]
       interval: 15s
       timeout: 5s
